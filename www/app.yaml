@@ -1,0 +1,6 @@
+runtime: python37
+service: default
+env_variables:
+  PROJECT_LOCATION: ''
+  TASK_QUEUE_NAME: ''
+  TG_BOT_TOKEN: ''

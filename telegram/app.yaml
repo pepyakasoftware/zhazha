@@ -1,0 +1,4 @@
+runtime: python37
+service: telegram
+env_variables:
+  TG_BOT_TOKEN: ''
