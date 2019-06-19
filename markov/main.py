@@ -22,5 +22,15 @@ def generate():
     return jsonify(ok=True, text=text)
 
 
+@app.route('/train', methods=['POST'])
+def train():
+    params = request.json
+    if 'dictionary' not in params:
+        return jsonify(ok=False, error='Dictionary identifier is required')
+    markov.train_model(params['dictionary'],
+                       corpus=params.get('corpus', ''))
+    return jsonify(ok=True)
+
+
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=8080, debug=True)

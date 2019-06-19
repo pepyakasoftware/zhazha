@@ -41,11 +41,16 @@ def handle_update():
 
 def process_message(message: dict):
     chat_id: int = message['chat']['id']
-    text: str = message.get('text', '')
+    text: str = message.get('text', None)
+    entities = message.get('entities', None)
     if not text:
-        text = message.get('caption', '')
+        text = message.get('caption', None)
+        entities = message.get('caption_entities', None)
+    if not text:
+        return
+    if entities:
+        text = _strip_entities(text, entities)
     text = text.strip().lower()
-
     if not text:
         return
 
@@ -56,6 +61,9 @@ def process_message(message: dict):
         if text:
             target = text.split()[0]
         obosri(chat_id, start=target)
+    else:
+        # save new tokens
+        save(chat_id, text)
 
 
 def obosri(chat_id, start=None):
@@ -71,6 +79,30 @@ def obosri(chat_id, start=None):
         })
     else:
         LOG.error(res['error'])
+
+
+def save(chat_id, text: str):
+    payload = {
+        'dictionary': chat_id,
+        'corpus': text
+    }
+    res = requests.post(f'{markov_service_url}/train',
+                        json=payload).json()
+    if not res['ok']:
+        LOG.error(res['error'])
+
+
+def _strip_entities(text, entities):
+    starts = [0]
+    ends = []
+    for e in entities:
+        starts.append(e['offset'] + e['length'])
+        ends.append(e['offset'])
+    ends.append(len(text))
+    result = []
+    for start, end in zip(starts, ends):
+        result.append(text[start:end])
+    return ''.join(result)
 
 
 if __name__ == '__main__':
