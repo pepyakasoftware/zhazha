@@ -2,19 +2,19 @@ import logging
 import re
 import sys
 from collections import defaultdict
+import redis
+import json
 from random import choice
-
-from google.cloud import datastore
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 LOG = logging.getLogger('markov:markov')
+redis_url="redis"
 
 re_alphabet = re.compile('[0-9а-яА-ЯёЁіІїЇєЄґҐ-]+|[.,:;?!]')
 re_brackets = re.compile('<.*>')
 re_emoji = re.compile(':[^\s]+:')
 
-_client = datastore.Client()
-
+_client = redis.Redis(host=redis_url, db=0)
 
 def generate_sentences(dictionary_id: int, t1: str = None, amount: int = None) -> str:
     t1 = t1 or '$'
@@ -35,13 +35,9 @@ def _generate_sentence(dictionary_id: int, t1: str = '$') -> str:
     if t1 != '$':
         phrase += t1
     while True:
-        key = _client.key('Db', 'markov',
-                          'Dictionary', str(dictionary_id),
-                          'Chain', t0,
-                          'Chain', t1)
-        q = _client.query(kind='Chain', ancestor=key)
-        entities = q.fetch()
-        seq = [e.key.name for e in entities]
+        key=f'{str(dictionary_id)}:{t0}:{t1}'
+        seq = [e.decode("utf-8") for e in _client.smembers(key)]
+        LOG.debug("Key: %s, seq: %s", key, seq)
         if not seq:
             phrase += "!"
             break
@@ -52,6 +48,7 @@ def _generate_sentence(dictionary_id: int, t1: str = '$') -> str:
             phrase += t1
         else:
             phrase += ' ' + t1
+    LOG.debug(str(phrase))
     return phrase.capitalize()
 
 
@@ -65,16 +62,13 @@ def train_model(dictionary_id: int, corpus: str):
     for t0, t1, t2 in trigrams:
         bi[t0, t1] += 1
         tri[t0, t1, t2] += 1
+    entities=[]
     for (t0, t1, t2), freq in tri.items():
-        key = _client.key('Db', 'markov', 'Dictionary', str(dictionary_id), 'Chain', t0, 'Chain', t1, 'Chain', t2)
-        ent = datastore.Entity(key)
-        ent.update({'frequency': freq / bi[t0, t1]})
-        entities.append(ent)
+        key = f'{str(dictionary_id)}:{t0}:{t1}'
+        _client.sadd(key, t2)
+        entities.append(f'{key}:{t2}')
     LOG.debug('Training result: %s', entities)
-    if entities:
-        for i in range(0, len(entities), 100):
-            _client.put_multi(entities[i:i + 100])
-
+ 
 
 def _gen_lines(text: str):
     text = re_brackets.sub(' ', text)
