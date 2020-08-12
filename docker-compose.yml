@@ -1,0 +1,24 @@
+version: "3"
+services:
+  redis:
+    image: redis:alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - ${PWD}/redis-data:/data
+  markov:
+    build:
+      context: ./markov
+  telegram:
+    build:
+      context: ./telegram
+    environment:
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+  www:
+    build:
+      context: ./www
+    environment: 
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+  ngrok:
+    image: wernight/ngrok:latest
+    command: ngrok http www:8080 --region eu --authtoken ${NGROK_AUTHTOKEN}
+

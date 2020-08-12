@@ -1,2 +1,2 @@
-Flask
-google-cloud-datastore
+Flask==1.1.2
+redis==3.5.3

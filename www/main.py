@@ -2,41 +2,20 @@ import json
 import logging
 import os
 import sys
+import time
 
 import requests
 from flask import Flask, request, Response
-from google.cloud import tasks
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 LOG = logging.getLogger('www:main')
 
 app = Flask(__name__)
-
-
-def get_project_location():
-    loc = os.getenv('PROJECT_LOCATION')
-    if not loc:
-        loc = requests.get('http://metadata.google.internal/computeMetadata/v1/instance/zone',
-                           headers={'Metadata-Flavor': 'Google'}).text
-        loc = loc.split('/')[-1]
-        if loc.count('-') > 1:
-            loc = loc[:loc.rindex('-')]
-        os.environ['PROJECT_LOCATION'] = loc
-    return loc
-
-
-project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-project_location = get_project_location()
-task_queue = os.getenv('TASK_QUEUE_NAME') or 'default'
+app_base_url = os.getenv('APP_BASE_URL')
 tg_bot_token = os.getenv('TG_BOT_TOKEN')
-app_base_url = f'https://{project_id}.appspot.com'
 tg_api_base_url = 'https://api.telegram.org/bot'
 tg_api_url = f'{tg_api_base_url}{tg_bot_token}'
-wh_url = f'{app_base_url}/telegram/update/{tg_bot_token}'
-
-tasks_client = tasks.CloudTasksClient()
-task_parent = tasks_client.queue_path(project_id, project_location, task_queue)
-
+tg_service_url = 'http://telegram:8080'
 
 def telegram_request(command: str, method: str = 'post', data: dict = None) -> dict:
     url = f'{tg_api_url}/{command}'
@@ -63,6 +42,7 @@ def webhook():
         "pre_checkout_query"
     ]
     try:
+        wh_url = f'{app_base_url}/telegram/update/{tg_bot_token}'
         wh_info = telegram_request('getWebhookInfo')
         LOG.debug(f'Current webhook info: {wh_info}')
         if wh_info['url'] != wh_url \
@@ -82,22 +62,7 @@ def telegram_update():
     try:
         update = request.get_json()
         LOG.debug(f'Update received: {update}')
-
-        payload = json.dumps(update, ensure_ascii=False).encode()
-
-        task = {
-            'app_engine_http_request': {
-                'http_method': 'POST',
-                'relative_uri': '/update',
-                'app_engine_routing': {
-                    'service': 'telegram'
-                },
-                'body': payload
-            }
-        }
-
-        response = tasks_client.create_task(task_parent, task)
-        LOG.debug(f'Created task {response.name}: {task}')
+        requests.post(url=f'{tg_service_url}/update', json=update)
     except Exception as e:
         LOG.error(str(e))
     finally:
@@ -105,4 +70,24 @@ def telegram_update():
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8080, debug=True)
+    # wait 5s for ngrok to start up
+    if not app_base_url:
+        counter = 0
+        while counter < 10:
+            try:
+                resp = requests.get(url="http://ngrok:4040/api/tunnels/command_line")
+                app_base_url = resp.json()["public_url"]
+                LOG.debug("App url set to %s", app_base_url)
+                break
+            except Exception as e:
+                LOG.warn(str(e))
+                time.sleep(5)
+                counter += 1
+    if app_base_url:
+        webhook()
+        app.run(host='0.0.0.0', port=8080)
+    else:
+        LOG.error("no APP_BASE_URL set and failed to fetch one from ngrok")
+        exit(1)
+
+    

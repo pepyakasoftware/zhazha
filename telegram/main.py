@@ -9,11 +9,10 @@ from flask import Flask, request, Response
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 LOG = logging.getLogger('telegram:main')
 
-project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
 tg_bot_token = os.getenv('TG_BOT_TOKEN')
 tg_api_base_url = 'https://api.telegram.org/bot'
 tg_api_url = f'{tg_api_base_url}{tg_bot_token}'
-markov_service_url = f'http://markov.{project_id}.appspot.com'
+markov_service_url = 'http://markov:8080'
 
 app = Flask(__name__)
 
@@ -106,4 +105,4 @@ def _strip_entities(text, entities):
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=8080)
